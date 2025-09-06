@@ -53,9 +53,7 @@ Each slider is 1–10 (1 = best, 10 = worst). The app uses these weights (sum = 
 
 ## 📚 References
 
-* **Gradio Blocks**: [https://www.gradio.app/4.44.1/docs/gradio/blocks](https://www.gradio.app/4.44.1/docs/gradio/blocks)
 * **Hugging Face Spaces – README YAML config**: [https://huggingface.co/docs/hub/en/spaces-config-reference](https://huggingface.co/docs/hub/en/spaces-config-reference)
 * **Hugging Face Spaces – manage secrets/variables**: [https://huggingface.co/docs/huggingface\_hub/en/guides/manage-spaces](https://huggingface.co/docs/huggingface_hub/en/guides/manage-spaces)
-* **Spaces overview (env vars exposed to apps)**: [https://huggingface.co/docs/hub/en/spaces-overview](https://huggingface.co/docs/hub/en/spaces-overview)
 * **Gemini API – generateContent (REST)**: [https://ai.google.dev/api/generate-content](https://ai.google.dev/api/generate-content)
 * **Gemini API – docs hub**: [https://ai.google.dev/gemini-api/docs](https://ai.google.dev/gemini-api/docs)
