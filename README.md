@@ -1,6 +1,6 @@
 # Bureaucracy Analyzer
 
-A lightweight Gradio app that computes a **Bureaucracy Index (BI)** from 15 sliders (1–10) and, optionally, calls an LLM (Google **Gemini** or **OpenAI**) to return a **concrete, step‑by‑step plan** to reduce bureaucracy (quick wins + 30/60/90 roadmap + KPIs).
+A lightweight Gradio app that computes a **Bureaucracy Index (BI)** from 15 sliders (1–10) and, optionally, calls an LLM (Google **Gemini**) to return a **concrete, step‑by‑step plan** to reduce bureaucracy (quick wins + 30/60/90 roadmap + KPIs).
 
 
 ## ✨ Features
