@@ -1,0 +1,151 @@
+import os
+import json
+import requests
+import gradio as gr
+
+# -----------------------------
+# Config (read from environment)
+# -----------------------------
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+API_KEY = os.environ.get("GEMINI_API_KEY")  # set as a Space secret
+
+# -----------------------------
+# BI score weights & helpers
+# -----------------------------
+WEIGHTS = {
+    "A": 0.08, "PC": 0.08, "TC": 0.08, "T": 0.12,
+    "WA": 0.05, "DL": 0.05, "RF": 0.08, "EE": 0.05,
+    "AW": 0.05, "MR": 0.05, "CWT": 0.08, "ES": 0.05,
+    "CI": 0.05, "AL": 0.05, "PRR": 0.06,
+}
+SUM_W = sum(WEIGHTS.values())   # 0.98
+MAX_SCALE = 10 * SUM_W          # 9.8
+
+def categorize(bi):
+    if bi <= 30:   return "Low", "✅ Low Bureaucracy (Efficient process)"
+    if bi <= 50:   return "Moderate", "⚠️ Moderate Bureaucracy (Some inefficiencies)"
+    if bi <= 70:   return "High", "🔴 High Bureaucracy (Needs improvement)"
+    return "Extreme", "🚨 Extreme Bureaucracy (Severely bureaucratic)"
+
+# -----------------------------
+# Call Gemini for improvement plan
+# -----------------------------
+def gemini_advice(bi_score, band, metrics):
+    """
+    Returns Gemini's raw Markdown advice text (or a readable error).
+    """
+    if not API_KEY:
+        return "Error: GEMINI_API_KEY is not set in Space Secrets."
+
+    # Put everything Gemini needs into one message
+    lines = [f"{k}: {v}" for k, v in metrics.items()]
+    metrics_block = "\n".join(f"- {line}" for line in lines)
+
+    # Single prompt that biases Gemini by band (low/moderate/high/extreme)
+    prompt = f"""
+You are an operations improvement expert. Based on the Bureaucracy Index (BI) and its components (1 = best, 10 = worst),
+give practical steps to reduce bureaucracy.
+
+BI score: {bi_score:.2f}%
+Band: {band}
+
+Component ratings (1–10):
+{metrics_block}
+
+Requirements:
+- Start with a 1–2 sentence summary of the situation and key risks.
+- Then give an actionable plan as Markdown:
+  1) **Top 5 actions** (quick wins within 2–4 weeks)
+  2) **30/60/90-day roadmap** (bullet points per phase)
+  3) **Metrics to track** (2–5 measurable KPIs)
+- Keep it concrete (who/what/how long). Avoid generic fluff.
+- If Band is Low: congratulate first, then suggest incremental optimizations.
+- If Band is Moderate/High/Extreme: focus on de-layering approvals, cutting wait time, eliminating redundant steps,
+  increasing automation, and reducing rework.
+"""
+
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }
+        ]
+    }
+
+    try:
+        resp = requests.post(
+            API_ENDPOINT,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": API_KEY,   # official header for API key auth
+            },
+            json=payload,
+            timeout=60
+        )
+        if resp.status_code != 200:
+            try:
+                err = resp.json()
+            except Exception:
+                err = resp.text
+            return f"Gemini error (HTTP {resp.status_code}):\n```json\n{json.dumps(err, indent=2)}\n```"
+
+        data = resp.json()
+        text = (
+            data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+        )
+        if not text:
+            return f"Gemini returned an empty response:\n```json\n{json.dumps(data, indent=2)}\n```"
+        return text.replace("*", "")  # cleaner markdown
+    except Exception as e:
+        return f"Request failed: {e}"
+
+# -----------------------------
+# Gradio UI / main function
+# -----------------------------
+def analyze_and_advise(A, PC, TC, T, WA, DL, RF, EE, AW, MR, CWT, ES, CI, AL, PRR):
+    vals = {"A": A, "PC": PC, "TC": TC, "T": T, "WA": WA, "DL": DL, "RF": RF,
+            "EE": EE, "AW": AW, "MR": MR, "CWT": CWT, "ES": ES, "CI": CI, "AL": AL, "PRR": PRR}
+
+    total = sum(vals[k] * WEIGHTS[k] for k in WEIGHTS)
+    bi = max(0.0, min(100.0, (total / MAX_SCALE) * 100.0))
+    band, band_text = categorize(bi)
+
+    # Ask Gemini for the plan
+    advice = gemini_advice(bi, band, vals)
+
+    md = f"## Bureaucracy Score: **{bi:.2f}%**\n\n{band_text}\n\n### Gemini’s recommendations\n{advice}"
+    return md
+
+with gr.Blocks() as demo:
+    gr.Markdown("# Bureaucracy Analyzer\nFill the sliders (1–10) to compute your BI score and get **Gemini’s** reduction plan.")
+
+    A   = gr.Slider(1, 10, step=1, label="1. Approval Layers (1 = none, 10 = 10+)")
+    PC  = gr.Slider(1, 10, step=1, label="2. Process Complexity (1 = 1–2 steps, 10 = 10+)")
+    TC  = gr.Slider(1, 10, step=1, label="3. Time Per Step (1 = instant, 10 = >1 week)")
+    T   = gr.Slider(1, 10, step=1, label="4. Total Process Time (1 = <1 day, 10 = >1 month)")
+    WA  = gr.Slider(1, 10, step=1, label="5. Waiting for Approvals (1 = none, 10 = >2 weeks)")
+    DL  = gr.Slider(1, 10, step=1, label="6. Documentation Load (1 = none, 10 = 10+ docs)")
+    RF  = gr.Slider(1, 10, step=1, label="7. Redundancy (1 = none, 10 = high)")
+    EE  = gr.Slider(1, 10, step=1, label="8. Employee Effort (1 = 1 person, 10 = >10 people)")
+    AW  = gr.Slider(1, 10, step=1, label="9. Administrative Workload (1 = <1 hr, 10 = >10 hrs)")
+    MR  = gr.Slider(1, 10, step=1, label="10. Meetings Required (1 = none, 10 = frequent/long)")
+    CWT = gr.Slider(1, 10, step=1, label="11. Customer Wait Time (1 = instant, 10 = >1 month)")
+    ES  = gr.Slider(1, 10, step=1, label="12. Employee Frustration (1 = not frustrating, 10 = extremely)")
+    CI  = gr.Slider(1, 10, step=1, label="13. Customer Impact (1 = none, 10 = severe)")
+    AL  = gr.Slider(1, 10, step=1, label="14. Automation Level (1 = automated, 10 = fully manual)")
+    PRR = gr.Slider(1, 10, step=1, label="15. Rejection/Resubmission Rate (1 = never, 10 = very frequent)")
+
+    btn = gr.Button("Compute BI Score")
+    out = gr.Markdown()
+
+    btn.click(analyze_and_advise,
+              inputs=[A, PC, TC, T, WA, DL, RF, EE, AW, MR, CWT, ES, CI, AL, PRR],
+              outputs=out)
+
+if __name__ == "__main__":
+    demo.launch()
